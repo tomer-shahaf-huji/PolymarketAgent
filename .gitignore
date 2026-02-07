@@ -41,5 +41,10 @@ Thumbs.db
 
 # Project Specific
 debug_output.txt
-*.parquet
-*.pqt
+data/*.parquet
+data/*.pqt
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
