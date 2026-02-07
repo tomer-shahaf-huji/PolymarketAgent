@@ -12,23 +12,33 @@ PolymarketAgent/
 │   │   └── server.py          # Main API server
 │   ├── models/                # Pydantic data models
 │   │   ├── __init__.py
-│   │   └── market.py          # Market and MarketPair models
-│   └── services/              # Business logic
+│   │   ├── market.py          # Market and MarketPair models
+│   │   └── keyword_market.py  # KeywordMarkets model
+│   └── services/              # Business logic (3-step pipeline)
 │       ├── __init__.py
-│       ├── polymarket_client.py   # Polymarket API client
-│       └── market_pairs.py        # Market pairing logic
+│       ├── polymarket_client.py   # Step 1: Fetch markets
+│       ├── keyword_markets.py     # Step 2: Extract keyword markets
+│       └── market_pairs.py        # Step 3: Create pairs
 │
 ├── scripts/                    # Executable scripts
-│   ├── fetch_markets.py       # Fetch all markets from Polymarket
-│   ├── find_market_pairs.py   # Generate market pairs by keywords
-│   └── run_ui.py              # Start both backend and frontend
+│   ├── fetch_markets.py           # Step 1: Fetch all markets
+│   ├── extract_keyword_markets.py # Step 2: Extract by keyword
+│   ├── find_market_pairs.py       # Step 3: Generate pairs
+│   └── run_ui.py                  # Start both backend and frontend
 │
 ├── examples/                   # Example scripts
-│   └── working_with_objects.py # Demo of object-oriented workflow
+│   ├── working_with_objects.py    # Demo of object-oriented workflow
+│   └── three_step_workflow.py     # Demo of complete pipeline
 │
 ├── data/                       # Data storage (placeholder for DB)
-│   ├── markets.parquet        # All fetched markets (394K markets)
-│   └── market_pairs.parquet   # Generated market pairs (114K pairs)
+│   ├── markets.parquet            # All fetched markets (394K markets)
+│   ├── keywords/                  # Step 2 output
+│   │   ├── Iran.parquet          # Iran-related markets
+│   │   └── Trump.parquet         # Trump-related markets
+│   ├── pairs/                     # Step 3 output (per keyword)
+│   │   ├── Iran_pairs.parquet    # Iran pairs
+│   │   └── Trump_pairs.parquet   # Trump pairs
+│   └── market_pairs.parquet       # All pairs combined
 │
 ├── frontend/                   # React web UI
 │   ├── src/
@@ -64,25 +74,31 @@ npm install
 cd ..
 ```
 
-### 2. Fetch Market Data
+### 2. Run the Three-Step Data Pipeline
 
-Fetch all markets from Polymarket (394,000 markets):
+The application uses a modular three-step pipeline. Each step works with Pydantic objects and can be run independently:
+
+**Step 1: Fetch all markets from Polymarket**
 ```bash
 python scripts/fetch_markets.py
 ```
+→ Saves Market objects to `data/markets.parquet` (~35 MB)
 
-This will save data to `data/markets.parquet` (~35 MB).
+**Step 2: Extract markets for each keyword**
+```bash
+python scripts/extract_keyword_markets.py
+```
+→ Saves KeywordMarkets to `data/keywords/{keyword}.parquet`
 
-### 3. Generate Market Pairs
-
-Create pairs of related markets by keywords (e.g., "Iran", "Trump"):
+**Step 3: Create pairs from keyword markets**
 ```bash
 python scripts/find_market_pairs.py
 ```
+→ Saves MarketPair objects to `data/market_pairs.parquet` and `data/pairs/{keyword}_pairs.parquet`
 
-This will save pairs to `data/market_pairs.parquet` (~920 KB).
+**💡 Tip:** See [ARCHITECTURE.md](ARCHITECTURE.md) for details on the three-step pipeline and how to customize each step.
 
-### 4. Start the UI
+### 3. Start the UI
 
 Launch both backend API and frontend:
 ```bash
@@ -98,16 +114,27 @@ This will:
 
 ### Adding New Keywords
 
-Edit `scripts/find_market_pairs.py` and add keywords to the list:
+Edit `scripts/extract_keyword_markets.py` and add keywords to the list:
 
 ```python
 keywords = ["Iran", "Trump", "Election", "Bitcoin"]  # Add your keywords here
 ```
 
-Then regenerate pairs:
+Then run steps 2 and 3:
 ```bash
-python scripts/find_market_pairs.py
+python scripts/extract_keyword_markets.py  # Extract new keywords
+python scripts/find_market_pairs.py         # Create pairs
 ```
+
+### Customizing the Pipeline
+
+Each step can be customized independently:
+
+- **Step 1** ([polymarket_client.py](backend/services/polymarket_client.py)) - Modify market fetching logic
+- **Step 2** ([keyword_markets.py](backend/services/keyword_markets.py)) - Add custom keyword filtering
+- **Step 3** ([market_pairs.py](backend/services/market_pairs.py)) - Implement custom pairing strategies
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed examples.
 
 ### API Endpoints
 

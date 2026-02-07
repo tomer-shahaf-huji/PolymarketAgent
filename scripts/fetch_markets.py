@@ -20,8 +20,16 @@ def main():
     # Initialize the client
     client = PolymarketClient()
 
-    # Fetch all markets
-    markets = client.fetch_all_markets()
+    # Define output file path
+    output_file = str(Path(__file__).parent.parent / "data" / "markets.parquet")
+
+    # Fetch all markets with incremental saving
+    # Saves every 10 pages to prevent data loss if crash occurs
+    markets = client.fetch_all_markets(
+        output_file=output_file,
+        batch_size=10,  # Save every 10 pages
+        resume=True     # Resume from existing file if it exists
+    )
 
     if not markets:
         print("No markets fetched. Exiting.")
@@ -62,9 +70,12 @@ def main():
         print(f"   Status: {'Open' if market.is_open() else 'Closed'}")
     print()
 
-    # Save to parquet (placeholder for DB)
-    output_file = str(Path(__file__).parent.parent / "data" / "markets.parquet")
-    client.save_to_parquet(markets, output_file)
+    # Final save already done during fetching (batch mode)
+    # Show the file info
+    import os
+    if os.path.exists(output_file):
+        file_size = os.path.getsize(output_file) / (1024 * 1024)  # Convert to MB
+        print(f"File size: {file_size:.2f} MB")
 
     print()
     print("=" * 60)

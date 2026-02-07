@@ -42,10 +42,15 @@ class Market(BaseModel):
             }
         }
 
-    @field_validator('yes_odds', 'no_odds')
+    @field_validator('yes_odds', 'no_odds', mode='before')
     @classmethod
     def validate_odds(cls, v: Optional[float]) -> Optional[float]:
-        """Validate that odds are between 0 and 1."""
+        """Validate that odds are between 0 and 1, handling NaN as None."""
+        import math
+        # Handle NaN values from pandas (convert to None)
+        if v is not None and isinstance(v, float) and math.isnan(v):
+            return None
+        # Validate range
         if v is not None and not (0.0 <= v <= 1.0):
             raise ValueError('Odds must be between 0.0 and 1.0')
         return v

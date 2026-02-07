@@ -1,13 +1,18 @@
 """
 Market Pairing Service for finding and pairing related Polymarket markets.
+
+This service reads keyword-specific market collections and creates pairs from them.
+It expects keyword markets to be pre-extracted by the keyword_markets service.
 """
 from itertools import combinations
 import os
 import re
 from typing import List
+from pathlib import Path
 import pandas as pd
 
 from backend.models.market import Market, MarketPair, load_markets_from_parquet, save_market_pairs_to_parquet
+from backend.models.keyword_market import KeywordMarkets, load_keyword_markets_from_parquet
 
 
 def load_markets(filepath: str = "markets.parquet") -> List[Market]:
@@ -129,27 +134,65 @@ def save_pairs(pairs: List[MarketPair], filepath: str = "market_pairs.parquet") 
     print(f"File size: {file_size:.2f} KB")
 
 
-def find_and_pair_markets_multi_keyword(
-    keywords: list[str],
-    input_file: str = "markets.parquet",
-    output_file: str = "market_pairs.parquet"
+def create_pairs_from_keyword_markets(
+    keyword_markets: KeywordMarkets,
+    output_dir: str = None
 ) -> List[MarketPair]:
     """
-    Main function to find and pair markets for multiple keywords.
-
-    This function:
-    1. Loads market data from parquet file
-    2. Filters for open markets
-    3. For each keyword:
-       - Filters for keyword-related markets
-       - Creates all possible pairs
-    4. Combines all pairs from all keywords
-    5. Saves combined pairs to parquet file (placeholder for DB)
+    Create pairs from a KeywordMarkets collection.
 
     Args:
-        keywords: List of keywords to search for (e.g., ["Iran", "Trump"])
-        input_file: Path to input market data parquet file
-        output_file: Path to output pairs parquet file
+        keyword_markets: KeywordMarkets object with pre-filtered markets
+        output_dir: Optional directory to save pairs (if None, doesn't save)
+
+    Returns:
+        List of MarketPair objects
+    """
+    keyword = keyword_markets.keyword
+    markets = keyword_markets.markets
+
+    print(f"Creating pairs for keyword: '{keyword}'")
+    print(f"  Markets available: {len(markets)}")
+
+    if len(markets) < 2:
+        print(f"  [SKIP] Need at least 2 markets, found {len(markets)}")
+        return []
+
+    # Create pairs
+    pairs = create_market_pairs(markets, keyword)
+    print(f"  [OK] Created {len(pairs)} pairs")
+
+    # Optionally save to keyword-specific file
+    if output_dir:
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        output_file = os.path.join(output_dir, f"{keyword}_pairs.parquet")
+        save_pairs(pairs, output_file)
+
+    return pairs
+
+
+def find_and_pair_markets_multi_keyword(
+    keywords: list[str],
+    keywords_dir: str = "data/keywords",
+    output_file: str = "market_pairs.parquet",
+    save_individual_pairs: bool = False
+) -> List[MarketPair]:
+    """
+    Main function to create pairs from pre-extracted keyword markets.
+
+    This function:
+    1. Loads keyword-specific market collections from keywords_dir
+    2. For each keyword:
+       - Creates all possible pairs from the keyword's markets
+       - Optionally saves pairs to keyword-specific file
+    3. Combines all pairs from all keywords
+    4. Saves combined pairs to parquet file (placeholder for DB)
+
+    Args:
+        keywords: List of keywords to process (e.g., ["Iran", "Trump"])
+        keywords_dir: Directory containing keyword market files
+        output_file: Path to output combined pairs parquet file
+        save_individual_pairs: If True, save pairs for each keyword separately
 
     Returns:
         List of MarketPair objects from all keywords
@@ -160,42 +203,43 @@ def find_and_pair_markets_multi_keyword(
     print("=" * 60)
     print()
 
-    # Step 1: Load markets
-    markets = load_markets(input_file)
-    print()
+    # Create pairs directory if saving individual pairs
+    pairs_dir = os.path.join(os.path.dirname(output_file), "pairs") if save_individual_pairs else None
 
-    # Step 2: Filter for open markets
-    open_markets = filter_open_markets(markets)
-    print()
-
-    # Step 3-4: For each keyword, find markets and create pairs
+    # Process each keyword
     all_pairs = []
 
     for keyword in keywords:
-        print(f"Processing keyword: '{keyword}'")
-        print("-" * 40)
+        print("-" * 60)
 
-        # Find markets for this keyword
-        keyword_markets = find_keyword_markets(open_markets, keyword)
+        try:
+            # Load keyword markets
+            keyword_markets = load_keyword_markets_from_parquet(
+                os.path.join(keywords_dir, f"{keyword}.parquet")
+            )
 
-        if len(keyword_markets) >= 2:
-            # Create pairs for this keyword
-            pairs = create_market_pairs(keyword_markets, keyword)
+            # Create pairs
+            pairs = create_pairs_from_keyword_markets(
+                keyword_markets,
+                output_dir=pairs_dir
+            )
+
             all_pairs.extend(pairs)
-            print(f"[OK] Created {len(pairs)} pairs for '{keyword}'")
-        else:
-            print(f"[SKIP] Skipping '{keyword}' (need at least 2 markets, found {len(keyword_markets)})")
+
+        except FileNotFoundError as e:
+            print(f"[ERROR] {e}")
+            print(f"[SKIP] Skipping '{keyword}'")
 
         print()
 
-    # Step 5: Combine all pairs
+    # Combine and save all pairs
     if all_pairs:
         print("=" * 60)
         print(f"Total pairs created: {len(all_pairs)}")
         print("=" * 60)
         print()
 
-        # Step 6: Save combined pairs
+        # Save combined pairs
         save_pairs(all_pairs, output_file)
         return all_pairs
     else:
