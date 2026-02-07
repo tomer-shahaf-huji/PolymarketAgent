@@ -30,35 +30,41 @@ def main():
     print()
     print("-" * 60)
 
-    # Convert to DataFrame
-    df = client.markets_to_dataframe(markets)
-
     # Display summary
     print()
     print("=" * 60)
     print("Data Summary")
     print("=" * 60)
-    print(f"Total markets: {len(df)}")
-    print()
-    print("Column Info:")
-    print(df.info())
-    print()
-    print("Sample Data (first 5 rows):")
-    print(df.head())
+    print(f"Total markets: {len(markets)}")
     print()
 
     # Display some statistics
     print("=" * 60)
     print("Statistics")
     print("=" * 60)
-    print(f"Markets with valid yes/no odds: {df[df['yes_odds'].notna() & df['no_odds'].notna()].shape[0]}")
-    print(f"Total volume: ${df['volume'].sum():,.2f}")
-    print(f"Average volume per market: ${df['volume'].mean():,.2f}")
+    open_markets = [m for m in markets if m.is_open()]
+    markets_with_odds = [m for m in markets if m.has_valid_odds()]
+    total_volume = sum(m.volume for m in markets)
+    avg_volume = total_volume / len(markets) if markets else 0
+
+    print(f"Open markets: {len(open_markets)}")
+    print(f"Markets with valid yes/no odds: {len(markets_with_odds)}")
+    print(f"Total volume: ${total_volume:,.2f}")
+    print(f"Average volume per market: ${avg_volume:,.2f}")
     print()
 
-    # Save to parquet
+    # Show sample markets
+    print("Sample markets:")
+    for i, market in enumerate(markets[:3]):
+        print(f"\n{i+1}. {market.title}")
+        print(f"   ID: {market.market_id[:20]}...")
+        print(f"   Yes: {market.yes_odds}, No: {market.no_odds}")
+        print(f"   Status: {'Open' if market.is_open() else 'Closed'}")
+    print()
+
+    # Save to parquet (placeholder for DB)
     output_file = str(Path(__file__).parent.parent / "data" / "markets.parquet")
-    client.save_to_parquet(df, output_file)
+    client.save_to_parquet(markets, output_file)
 
     print()
     print("=" * 60)

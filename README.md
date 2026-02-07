@@ -10,6 +10,9 @@ PolymarketAgent/
 │   ├── api/                   # FastAPI server
 │   │   ├── __init__.py
 │   │   └── server.py          # Main API server
+│   ├── models/                # Pydantic data models
+│   │   ├── __init__.py
+│   │   └── market.py          # Market and MarketPair models
 │   └── services/              # Business logic
 │       ├── __init__.py
 │       ├── polymarket_client.py   # Polymarket API client
@@ -20,7 +23,10 @@ PolymarketAgent/
 │   ├── find_market_pairs.py   # Generate market pairs by keywords
 │   └── run_ui.py              # Start both backend and frontend
 │
-├── data/                       # Data storage
+├── examples/                   # Example scripts
+│   └── working_with_objects.py # Demo of object-oriented workflow
+│
+├── data/                       # Data storage (placeholder for DB)
 │   ├── markets.parquet        # All fetched markets (394K markets)
 │   └── market_pairs.parquet   # Generated market pairs (114K pairs)
 │
@@ -149,11 +155,74 @@ cd frontend
 npm run dev
 ```
 
+### Object-Oriented Approach with Pydantic
+
+The codebase uses **Pydantic models** for type-safe, validated data objects:
+
+#### Market Model
+```python
+from backend.models.market import Market
+
+# Markets are objects with validation and helper methods
+market = Market(
+    market_id="0x123...",
+    title="Will Bitcoin reach $100k?",
+    yes_odds=0.45,
+    no_odds=0.55,
+    # ... other fields
+)
+
+# Rich methods available
+market.is_open()           # Check if market is open
+market.has_valid_odds()    # Check if odds are valid
+market.implied_edge()      # Calculate edge/overround
+```
+
+#### MarketPair Model
+```python
+from backend.models.market import MarketPair
+
+# Pairs are objects containing two Market instances
+pair = MarketPair(
+    pair_id="Iran_0001",
+    keyword="Iran",
+    market1=market1,  # Market object
+    market2=market2   # Market object
+)
+
+# Helper methods
+pair.both_markets_open()        # Both markets open?
+pair.both_have_valid_odds()     # Both have valid odds?
+```
+
+#### Database Placeholder
+Currently using Parquet files as a placeholder for a future database:
+
+```python
+from backend.models.market import (
+    load_markets_from_parquet,    # Placeholder for DB query
+    save_markets_to_parquet,      # Placeholder for DB insert
+    markets_to_dataframe          # Convert objects to DataFrame
+)
+
+# Load Market objects (will become DB query)
+markets = load_markets_from_parquet("data/markets.parquet")
+
+# Work with objects
+open_markets = [m for m in markets if m.is_open()]
+
+# Save back (will become DB insert)
+save_markets_to_parquet(markets, "data/markets.parquet")
+```
+
+See [`examples/working_with_objects.py`](examples/working_with_objects.py) for a complete example.
+
 ### Project Architecture
 
 The project follows a clean architecture pattern:
 
 1. **Backend Layer**
+   - `backend/models/` - Pydantic data models with validation
    - `backend/services/` - Business logic (market fetching, pairing)
    - `backend/api/` - REST API endpoints (FastAPI)
 
@@ -162,7 +231,7 @@ The project follows a clean architecture pattern:
    - User-facing commands
 
 3. **Data Layer**
-   - Parquet files for efficient storage
+   - Parquet files for efficient storage (placeholder for database)
    - Separate from code for clarity
 
 4. **Frontend Layer**
