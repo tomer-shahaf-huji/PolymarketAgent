@@ -1,0 +1,172 @@
+[
+  {
+    "trigger_market_id": "31",
+    "implied_market_id": "13",
+    "reasoning": "Temporal Inclusion: Khamenei being removed by Feb 28 strictly implies he was removed by March 31."
+  },
+  {
+    "trigger_market_id": "13",
+    "implied_market_id": "2",
+    "reasoning": "Temporal Inclusion: Khamenei being removed by March 31 strictly implies he was removed by June 30."
+  },
+  {
+    "trigger_market_id": "2",
+    "implied_market_id": "1",
+    "reasoning": "Temporal Inclusion: Khamenei being removed by June 30 strictly implies he was removed by December 31."
+  },
+  {
+    "trigger_market_id": "43",
+    "implied_market_id": "42",
+    "reasoning": "Temporal Inclusion: Closing the Strait of Hormuz by March 31 strictly implies it was closed by June 30."
+  },
+  {
+    "trigger_market_id": "42",
+    "implied_market_id": "3",
+    "reasoning": "Temporal Inclusion: Closing the Strait of Hormuz by June 30 strictly implies it was closed by December 31."
+  },
+  {
+    "trigger_market_id": "38",
+    "implied_market_id": "11",
+    "reasoning": "Temporal Inclusion: An Israel strike by Feb 28 strictly implies an Israel strike by March 31."
+  },
+  {
+    "trigger_market_id": "11",
+    "implied_market_id": "10",
+    "reasoning": "Temporal Inclusion: An Israel strike by March 31 strictly implies an Israel strike by June 30."
+  },
+  {
+    "trigger_market_id": "58",
+    "implied_market_id": "32",
+    "reasoning": "Temporal Inclusion: A US strike by Feb 13 strictly implies a US strike by Feb 28."
+  },
+  {
+    "trigger_market_id": "32",
+    "implied_market_id": "17",
+    "reasoning": "Temporal Inclusion: A US strike by Feb 28 strictly implies a US strike by March 31."
+  },
+  {
+    "trigger_market_id": "17",
+    "implied_market_id": "16",
+    "reasoning": "Temporal Inclusion: A US strike by March 31 strictly implies a US strike by June 30."
+  },
+  {
+    "trigger_market_id": "41",
+    "implied_market_id": "34",
+    "reasoning": "Temporal Inclusion: A US or Israel strike by Feb 15 strictly implies a strike by Feb 28."
+  },
+  {
+    "trigger_market_id": "34",
+    "implied_market_id": "33",
+    "reasoning": "Temporal Inclusion: A US or Israel strike by Feb 28 strictly implies a strike by March 31."
+  },
+  {
+    "trigger_market_id": "33",
+    "implied_market_id": "40",
+    "reasoning": "Temporal Inclusion: A US or Israel strike by March 31 strictly implies a strike by December 31."
+  },
+  {
+    "trigger_market_id": "27",
+    "implied_market_id": "26",
+    "reasoning": "Temporal Inclusion: Trump invoking War Powers by Jan 31 strictly implies he did so by March 31."
+  },
+  {
+    "trigger_market_id": "29",
+    "implied_market_id": "25",
+    "reasoning": "Temporal Inclusion: An official declaration of war by March 31 strictly implies a declaration by December 31."
+  },
+  {
+    "trigger_market_id": "36",
+    "implied_market_id": "37",
+    "reasoning": "Temporal Inclusion: Reza Pahlavi entering Iran by Feb 28 strictly implies he entered by March 31."
+  },
+  {
+    "trigger_market_id": "37",
+    "implied_market_id": "18",
+    "reasoning": "Temporal Inclusion: Reza Pahlavi entering Iran by March 31 strictly implies he entered by June 30."
+  },
+  {
+    "trigger_market_id": "39",
+    "implied_market_id": "19",
+    "reasoning": "Temporal Inclusion: Khamenei leaving Iran by Feb 28 strictly implies he left by March 31."
+  },
+  {
+    "trigger_market_id": "14",
+    "implied_market_id": "6",
+    "reasoning": "Temporal Inclusion: A nuclear deal by June 30 strictly implies a deal by December 31."
+  },
+  {
+    "trigger_market_id": "8",
+    "implied_market_id": "15",
+    "reasoning": "Temporal Inclusion: A ceasefire broken by March 31 strictly implies it was broken by June 30."
+  },
+  {
+    "trigger_market_id": "22",
+    "implied_market_id": "21",
+    "reasoning": "Temporal Inclusion: A military engagement by March 31 strictly implies one by June 30."
+  },
+  {
+    "trigger_market_id": "38",
+    "implied_market_id": "34",
+    "reasoning": "Categorical Inclusion: An Israel strike is a specific subset of the 'US or Israel strike' condition."
+  },
+  {
+    "trigger_market_id": "32",
+    "implied_market_id": "34",
+    "reasoning": "Categorical Inclusion: A US strike is a specific subset of the 'US or Israel strike' condition."
+  },
+  {
+    "trigger_market_id": "11",
+    "implied_market_id": "33",
+    "reasoning": "Categorical Inclusion: An Israel strike is a specific subset of the 'US or Israel strike' condition."
+  },
+  {
+    "trigger_market_id": "17",
+    "implied_market_id": "33",
+    "reasoning": "Categorical Inclusion: A US strike is a specific subset of the 'US or Israel strike' condition."
+  },
+  {
+    "trigger_market_id": "11",
+    "implied_market_id": "8",
+    "reasoning": "Categorical Inclusion: An Israel strike on Iranian soil by March 31 is a specific trigger for the 'Israel x Iran ceasefire broken' market."
+  },
+  {
+    "trigger_market_id": "28",
+    "implied_market_id": "8",
+    "reasoning": "Categorical Inclusion: An Iran strike on Israeli soil by Feb 28 is a specific trigger for the 'Israel x Iran ceasefire broken by March 31' market."
+  },
+  {
+    "trigger_market_id": "17",
+    "implied_market_id": "22",
+    "reasoning": "Categorical Inclusion: The description for ID 22 explicitly states that any US kinetic strike on Iranian territory qualifies as military engagement."
+  },
+  {
+    "trigger_market_id": "32",
+    "implied_market_id": "22",
+    "reasoning": "Categorical/Temporal Inclusion: A US strike in February is both a military engagement and occurs before the March 31 deadline for ID 22."
+  },
+  {
+    "trigger_market_id": "35",
+    "implied_market_id": "22",
+    "reasoning": "Categorical/Temporal Inclusion: An Iranian strike on the US military (Feb) is a direct form of US-Iran military engagement (deadline March)."
+  },
+  {
+    "trigger_market_id": "44",
+    "implied_market_id": "75",
+    "reasoning": "Categorical Identity: Market definitions are identical; A -> B and B -> A."
+  },
+  {
+    "trigger_market_id": "75",
+    "implied_market_id": "44",
+    "reasoning": "Categorical Identity: Market definitions are identical; A -> B and B -> A."
+  },
+  {
+    "trigger_market_id": "47",
+    "implied_market_id": "32",
+    "reasoning": "Numerical/Temporal Inclusion: The 'Next US strike' occurring on Feb 6 strictly implies a strike happened by Feb 28."
+  },
+  {
+    "trigger_market_id": "72",
+    "implied_market_id": "32",
+    "reasoning": "Numerical/Temporal Inclusion: The 'Next US strike' occurring on Feb 13 strictly implies a strike happened by Feb 28."
+  }
+]

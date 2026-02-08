@@ -1,122 +1,101 @@
 """
 Market Pairing Service for finding and pairing related Polymarket markets.
 
-This service reads keyword-specific market collections and creates pairs from them.
-It expects keyword markets to be pre-extracted by the keyword_markets service.
+This service uses LLM analysis to identify meaningful implication pairs (A -> B)
+from keyword-specific market collections. It replaces the previous brute-force
+combinations approach with intelligent, logic-based pair identification.
+
+Pipeline: keyword markets -> LLM analysis -> MarketPair objects -> parquet
 """
-from itertools import combinations
 import os
-import re
 from typing import List
 from pathlib import Path
-import pandas as pd
 
-from backend.models.market import Market, MarketPair, load_markets_from_parquet, save_market_pairs_to_parquet
+from backend.models.market import Market, MarketPair, save_market_pairs_to_parquet
 from backend.models.keyword_market import KeywordMarkets, load_keyword_markets_from_parquet
+from backend.services.llm_client import (
+    LLMPairResult,
+    analyze_markets,
+    DEFAULT_MARKETS_LIMIT,
+)
 
 
-def load_markets(filepath: str = "markets.parquet") -> List[Market]:
+def get_valid_market_indices(markets: List[Market]) -> List[int]:
     """
-    Load market data from parquet file as Market objects.
+    Get indices of markets that have valid yes/no odds.
+
+    Returns original indices (positions in the full list) so they match
+    the IDs used in the LLM prompt and mock responses.
 
     Args:
-        filepath: Path to the parquet file
+        markets: Full list of Market objects
 
     Returns:
-        List of Market objects
-
-    Raises:
-        FileNotFoundError: If the parquet file doesn't exist
+        List of indices into the original market list
     """
-    if not os.path.exists(filepath):
-        raise FileNotFoundError(
-            f"Market data file not found: {filepath}\n"
-            f"Please run 'python fetch_markets.py' first to fetch market data."
-        )
-
-    print(f"Loading markets from {filepath}...")
-    markets = load_markets_from_parquet(filepath)
-    print(f"Loaded {len(markets)} markets")
-    return markets
+    valid_indices = [i for i, m in enumerate(markets) if m.has_valid_odds()]
+    print(f"  Markets with valid odds: {len(valid_indices)} / {len(markets)}")
+    return valid_indices
 
 
-def filter_open_markets(markets: List[Market]) -> List[Market]:
+def create_pairs_from_llm_results(
+    keyword: str,
+    markets: List[Market],
+    llm_results: List[LLMPairResult],
+) -> List[MarketPair]:
     """
-    Filter for markets that are open (active and not closed).
+    Create MarketPair objects from LLM analysis results.
+
+    The LLM returns index-based IDs that correspond to each market's original
+    position in the full keyword market list (matching how they were presented
+    in the prompt with their original indices preserved).
 
     Args:
-        markets: List of Market objects
+        keyword: Keyword tag for these pairs
+        markets: The full list of Market objects (index = original position)
+        llm_results: List of LLMPairResult from the LLM
 
     Returns:
-        Filtered list with only open markets
+        List of MarketPair objects with reasoning
     """
-    open_markets = [m for m in markets if m.is_open()]
-    print(f"Found {len(open_markets)} open markets")
-    return open_markets
+    # Build index -> Market mapping from the FULL list
+    index_to_market = {str(i): market for i, market in enumerate(markets)}
 
-
-def find_keyword_markets(markets: List[Market], keyword: str) -> List[Market]:
-    """
-    Filter markets where title contains a specific keyword as a whole word (case-insensitive).
-
-    Args:
-        markets: List of Market objects
-        keyword: Keyword to search for in market titles
-
-    Returns:
-        Filtered list with keyword-related markets
-    """
-    # Use word boundaries to match whole words only
-    # \b ensures we match "Iran" but not "Miran"
-    pattern = rf'\b{keyword}\b'
-    regex = re.compile(pattern, re.IGNORECASE)
-
-    keyword_markets = [m for m in markets if regex.search(m.title)]
-    print(f"Found {len(keyword_markets)} '{keyword}'-related markets")
-    return keyword_markets
-
-
-def create_market_pairs(markets: List[Market], keyword: str = None) -> List[MarketPair]:
-    """
-    Create all possible pairs (combinations) of markets.
-
-    Args:
-        markets: List of Market objects to pair
-        keyword: Optional keyword tag to associate with these pairs
-
-    Returns:
-        List of MarketPair objects
-    """
-    if len(markets) < 2:
-        print(f"Need at least 2 markets to create pairs, found {len(markets)}")
-        return []
-
-    print(f"Creating pairs from {len(markets)} markets...")
-
-    # Generate all combinations
     pairs = []
-    pair_count = 0
+    skipped = 0
 
-    for idx1, idx2 in combinations(range(len(markets)), 2):
-        market1 = markets[idx1]
-        market2 = markets[idx2]
+    for result in llm_results:
+        trigger = index_to_market.get(result.trigger_market_id)
+        implied = index_to_market.get(result.implied_market_id)
 
-        pair_count += 1
-        pair_id = f"{keyword}_{pair_count:04d}" if keyword else f"pair_{pair_count:04d}"
+        if trigger is None or implied is None:
+            skipped += 1
+            missing = []
+            if trigger is None:
+                missing.append(f"trigger={result.trigger_market_id}")
+            if implied is None:
+                missing.append(f"implied={result.implied_market_id}")
+            print(f"  [WARN] Skipping pair: index not found ({', '.join(missing)})")
+            continue
 
+        pair_id = f"{keyword}_{len(pairs) + 1:04d}"
         pair = MarketPair(
             pair_id=pair_id,
             keyword=keyword,
-            market1=market1,
-            market2=market2
+            market1=trigger,
+            market2=implied,
+            reasoning=result.reasoning,
         )
         pairs.append(pair)
 
-    print(f"Created {len(pairs)} pairs")
+    if skipped > 0:
+        print(f"  [WARN] Skipped {skipped} pairs due to missing market indices")
+
+    print(f"  Created {len(pairs)} MarketPair objects")
     return pairs
 
 
-def save_pairs(pairs: List[MarketPair], filepath: str = "market_pairs.parquet") -> None:
+def save_pairs(pairs: List[MarketPair], filepath: str) -> None:
     """
     Save MarketPair objects to parquet file (placeholder for DB).
 
@@ -124,67 +103,30 @@ def save_pairs(pairs: List[MarketPair], filepath: str = "market_pairs.parquet") 
         pairs: List of MarketPair objects
         filepath: Path to output parquet file
     """
-    print(f"Saving pairs to {filepath}...")
-
     save_market_pairs_to_parquet(pairs, filepath)
 
-    # Print file size
-    file_size = os.path.getsize(filepath) / 1024  # Convert to KB
-    print(f"Successfully saved {len(pairs)} pairs to {filepath}")
-    print(f"File size: {file_size:.2f} KB")
-
-
-def create_pairs_from_keyword_markets(
-    keyword_markets: KeywordMarkets,
-    output_dir: str = None
-) -> List[MarketPair]:
-    """
-    Create pairs from a KeywordMarkets collection.
-
-    Args:
-        keyword_markets: KeywordMarkets object with pre-filtered markets
-        output_dir: Optional directory to save pairs (if None, doesn't save)
-
-    Returns:
-        List of MarketPair objects
-    """
-    keyword = keyword_markets.keyword
-    markets = keyword_markets.markets
-
-    print(f"Creating pairs for keyword: '{keyword}'")
-    print(f"  Markets available: {len(markets)}")
-
-    if len(markets) < 2:
-        print(f"  [SKIP] Need at least 2 markets, found {len(markets)}")
-        return []
-
-    # Create pairs
-    pairs = create_market_pairs(markets, keyword)
-    print(f"  [OK] Created {len(pairs)} pairs")
-
-    # Optionally save to keyword-specific file
-    if output_dir:
-        Path(output_dir).mkdir(parents=True, exist_ok=True)
-        output_file = os.path.join(output_dir, f"{keyword}_pairs.parquet")
-        save_pairs(pairs, output_file)
-
-    return pairs
+    file_size = os.path.getsize(filepath) / 1024
+    print(f"  Saved {len(pairs)} pairs to {filepath} ({file_size:.2f} KB)")
 
 
 def find_and_pair_markets_multi_keyword(
     keywords: list[str],
     keywords_dir: str = "data/keywords",
     output_file: str = "market_pairs.parquet",
-    save_individual_pairs: bool = False
+    save_individual_pairs: bool = False,
+    use_mock: bool = True,
+    markets_limit: int = DEFAULT_MARKETS_LIMIT,
 ) -> List[MarketPair]:
     """
-    Main function to create pairs from pre-extracted keyword markets.
+    Main function to create implication pairs from keyword markets using LLM analysis.
 
     This function:
     1. Loads keyword-specific market collections from keywords_dir
     2. For each keyword:
-       - Creates all possible pairs from the keyword's markets
-       - Optionally saves pairs to keyword-specific file
+       a. Filters markets with valid odds
+       b. Sends to LLM for implication analysis (or loads mock results)
+       c. Creates MarketPair objects from LLM results
+       d. Optionally saves pairs to keyword-specific file
     3. Combines all pairs from all keywords
     4. Saves combined pairs to parquet file (placeholder for DB)
 
@@ -193,90 +135,76 @@ def find_and_pair_markets_multi_keyword(
         keywords_dir: Directory containing keyword market files
         output_file: Path to output combined pairs parquet file
         save_individual_pairs: If True, save pairs for each keyword separately
+        use_mock: If True, use mock LLM responses. If False, call real LLM API.
+        markets_limit: Max number of markets to send to LLM per keyword
 
     Returns:
         List of MarketPair objects from all keywords
     """
     print("=" * 60)
-    print(f"Market Pairing Service - Multiple Keywords")
+    print("Market Pairing Service - LLM-Driven Analysis")
     print(f"Keywords: {', '.join(keywords)}")
+    print(f"Mode: {'mock' if use_mock else 'live LLM'}")
     print("=" * 60)
     print()
 
-    # Create pairs directory if saving individual pairs
     pairs_dir = os.path.join(os.path.dirname(output_file), "pairs") if save_individual_pairs else None
 
-    # Process each keyword
     all_pairs = []
 
     for keyword in keywords:
         print("-" * 60)
+        print(f"Processing keyword: '{keyword}'")
 
         try:
-            # Load keyword markets
+            # 1. Load keyword markets
             keyword_markets = load_keyword_markets_from_parquet(
                 os.path.join(keywords_dir, f"{keyword}.parquet")
             )
+            all_markets = keyword_markets.markets
+            print(f"  Loaded {len(all_markets)} markets")
 
-            # Create pairs
-            pairs = create_pairs_from_keyword_markets(
-                keyword_markets,
-                output_dir=pairs_dir
+            # 2. Get indices of markets with valid odds, apply limit
+            valid_indices = get_valid_market_indices(all_markets)
+
+            if len(valid_indices) < 2:
+                print(f"  [SKIP] Need at least 2 valid markets, found {len(valid_indices)}")
+                continue
+
+            limited_indices = valid_indices[:markets_limit]
+            if len(valid_indices) > markets_limit:
+                print(f"  Limited to {markets_limit} markets (from {len(valid_indices)})")
+
+            # 3. Run LLM analysis (uses original indices for market IDs)
+            llm_results = analyze_markets(
+                keyword, all_markets, limited_indices, use_mock=use_mock
             )
+
+            # 4. Create MarketPair objects from LLM results (maps by original index)
+            pairs = create_pairs_from_llm_results(keyword, all_markets, llm_results)
+
+            # 5. Optionally save per-keyword pairs
+            if pairs_dir and pairs:
+                Path(pairs_dir).mkdir(parents=True, exist_ok=True)
+                output_path = os.path.join(pairs_dir, f"{keyword}_pairs.parquet")
+                save_pairs(pairs, output_path)
 
             all_pairs.extend(pairs)
 
         except FileNotFoundError as e:
-            print(f"[ERROR] {e}")
-            print(f"[SKIP] Skipping '{keyword}'")
+            print(f"  [ERROR] {e}")
+            print(f"  [SKIP] Skipping '{keyword}'")
 
         print()
 
     # Combine and save all pairs
     if all_pairs:
         print("=" * 60)
-        print(f"Total pairs created: {len(all_pairs)}")
+        print(f"Total implication pairs found: {len(all_pairs)}")
         print("=" * 60)
         print()
-
-        # Save combined pairs
         save_pairs(all_pairs, output_file)
         return all_pairs
     else:
         print("No pairs created for any keyword")
         return []
-
-
-def find_and_pair_markets(
-    input_file: str = "markets.parquet",
-    output_file: str = "market_pairs.parquet",
-    keywords: list[str] = None
-) -> List[MarketPair]:
-    """
-    Main function to find and pair keyword-related markets.
-
-    This function:
-    1. Loads market data from parquet file
-    2. Filters for open markets
-    3. Filters for keyword-related markets
-    4. Creates all possible pairs
-    5. Saves pairs to parquet file (placeholder for DB)
-
-    Args:
-        input_file: Path to input market data parquet file
-        output_file: Path to output pairs parquet file
-        keywords: List of keywords to search for. If None, defaults to ["Iran", "Trump"]
-
-    Returns:
-        List of MarketPair objects
-    """
-    # Default keywords if none provided
-    if keywords is None:
-        keywords = ["Iran", "Trump"]
-
-    # Use multi-keyword function
-    return find_and_pair_markets_multi_keyword(
-        keywords=keywords,
-        input_file=input_file,
-        output_file=output_file
-    )

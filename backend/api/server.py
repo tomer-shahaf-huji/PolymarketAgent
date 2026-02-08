@@ -52,9 +52,10 @@ def load_pairs_data() -> pd.DataFrame:
 
 def format_pair(row: pd.Series) -> Dict[str, Any]:
     """Format a pair DataFrame row as JSON."""
-    return {
+    result = {
         "pair_id": row["pair_id"],
         "keyword": row.get("keyword", None),
+        "reasoning": row.get("reasoning", None) if pd.notna(row.get("reasoning", None)) else None,
         "market1": {
             "id": row["market1_id"],
             "title": row["market1_title"],
@@ -70,6 +71,7 @@ def format_pair(row: pd.Series) -> Dict[str, Any]:
             "no_odds": float(row["market2_no_odds"]) if pd.notna(row["market2_no_odds"]) else None,
         }
     }
+    return result
 
 
 @app.get("/")

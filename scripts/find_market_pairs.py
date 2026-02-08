@@ -1,10 +1,14 @@
 """
-Main script to create pairs from keyword-specific markets.
+Main script to create implication pairs from keyword-specific markets using LLM analysis.
 
 This is step 3 in the data pipeline:
 1. fetch_markets.py - Fetch all markets
 2. extract_keyword_markets.py - Extract markets by keyword
-3. find_market_pairs.py - Create pairs from keyword markets (THIS SCRIPT)
+3. find_market_pairs.py - LLM identifies implication pairs (THIS SCRIPT)
+
+The LLM analyzes keyword markets and identifies pairs where Market A resolving YES
+logically guarantees Market B also resolves YES (temporal, numerical, or categorical
+inclusion). Currently uses mock LLM responses; will use real API later.
 """
 import sys
 from pathlib import Path
@@ -17,7 +21,7 @@ from backend.models.market import market_pairs_to_dataframe
 
 
 def main():
-    """Create pairs from pre-extracted keyword markets."""
+    """Create implication pairs from keyword markets via LLM analysis."""
     # Define keywords to process
     keywords = ["Iran", "Trump"]
 
@@ -26,13 +30,13 @@ def main():
     keywords_dir = str(data_dir / "keywords")
     output_file = str(data_dir / "market_pairs.parquet")
 
-    # Run the pairing service
-    # This reads from data/keywords/{keyword}.parquet files
+    # Run the LLM-driven pairing service
     pairs = find_and_pair_markets_multi_keyword(
         keywords=keywords,
         keywords_dir=keywords_dir,
         output_file=output_file,
-        save_individual_pairs=True  # Also save pairs per keyword in data/pairs/
+        save_individual_pairs=True,
+        use_mock=True,  # Use mock LLM responses (set False for real API)
     )
 
     print()
@@ -41,7 +45,7 @@ def main():
     print("=" * 60)
 
     if len(pairs) > 0:
-        print(f"Total pairs created: {len(pairs)}")
+        print(f"Total implication pairs: {len(pairs)}")
 
         # Convert to DataFrame for analysis
         pairs_df = market_pairs_to_dataframe(pairs)
@@ -57,14 +61,14 @@ def main():
         print("Sample pairs (first 3):")
         print("-" * 60)
 
-        # Display first 3 pairs
         for idx in range(min(3, len(pairs))):
             pair = pairs[idx]
             print(f"\n{pair.pair_id} (keyword: {pair.keyword}):")
-            print(f"  Market 1: {pair.market1.title[:70]}...")
+            print(f"  Trigger:  {pair.market1.title[:70]}")
             print(f"    Yes: {pair.market1.yes_odds}, No: {pair.market1.no_odds}")
-            print(f"  Market 2: {pair.market2.title[:70]}...")
+            print(f"  Implied:  {pair.market2.title[:70]}")
             print(f"    Yes: {pair.market2.yes_odds}, No: {pair.market2.no_odds}")
+            print(f"  Reasoning: {pair.reasoning}")
 
         print()
         print("-" * 60)
@@ -75,7 +79,7 @@ def main():
         print("Possible reasons:")
         print("  - No keyword markets files found in data/keywords/")
         print("  - Run 'python scripts/extract_keyword_markets.py' first")
-        print("  - Only 1 market found per keyword (need at least 2 for pairs)")
+        print("  - No mock LLM responses found in data/mock/")
 
     print()
     print("=" * 60)

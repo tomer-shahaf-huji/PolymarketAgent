@@ -29,17 +29,35 @@ The application uses a **three-step data pipeline** to process Polymarket data. 
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│                   STEP 3: Create Pairs                          │
+│            STEP 3: LLM-Driven Implication Pairing               │
 │                                                                  │
-│  Keyword markets → MarketPair objects →                         │
-│                    data/pairs/{keyword}_pairs.parquet           │
-│                    data/market_pairs.parquet (combined)         │
+│  Keyword markets → LLM analysis → MarketPair objects →          │
+│                    data/pairs/{keyword}_pairs.parquet            │
+│                    data/market_pairs.parquet (combined)          │
 │                                                                  │
 │  Script: scripts/find_market_pairs.py                           │
 │  Service: backend/services/market_pairs.py                      │
+│  LLM Client: backend/services/llm_client.py                    │
 │  Model: backend/models/market.py (MarketPair)                   │
+│  Mock data: data/mock/{keyword}_llm_response.json               │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+## Step 3: How LLM Pairing Works
+
+Instead of brute-force combinations, the pipeline uses an LLM to identify **implication pairs** (A → B):
+
+1. **Filter** keyword markets to those with valid odds (limit: 100 per keyword)
+2. **Build prompt** with system instructions, few-shot examples, and market list
+3. **LLM analyzes** markets and returns pairs where Market A resolving YES logically guarantees Market B also resolves YES
+4. **Create MarketPair objects** mapping LLM index-based IDs back to Market objects
+
+**Implication types the LLM identifies:**
+- **Temporal Inclusion:** "Event by March" → "Event by June"
+- **Numerical Inclusion:** "BTC > $100k" → "BTC > $90k"
+- **Categorical Inclusion:** "Israel strikes Iran" → "US or Israel strikes Iran"
+
+**Mock mode:** Currently uses pre-computed LLM responses stored in `data/mock/`. Set `use_mock=False` when real LLM API credentials are configured.
 
 ## Why Three Steps?
 
@@ -58,11 +76,10 @@ The separation allows for complex filtering at each step:
 - Implement custom market selection logic
 - Pre-compute keyword-specific features
 
-**Step 3 (Create Pairs):**
-- Different pairing strategies per keyword
-- Apply keyword-specific pair filters
-- Compute arbitrage opportunities
-- Select optimal pairs based on criteria
+**Step 3 (LLM Pairing):**
+- LLM identifies logical implication relationships
+- Each pair includes reasoning explaining the A → B logic
+- Supports different pairing strategies (implication, arbitrage, future: triplets)
 
 ### Performance
 - Process each keyword independently
@@ -114,13 +131,25 @@ from backend.models.market import MarketPair
 pair = MarketPair(
     pair_id="Iran_0001",
     keyword="Iran",
-    market1=market1,  # Full Market object
-    market2=market2   # Full Market object
+    market1=trigger_market,   # If this resolves YES...
+    market2=implied_market,   # ...then this must also resolve YES
+    reasoning="Temporal Inclusion: Event by March implies event by June"
 )
 
 # Helper methods
 pair.both_markets_open()        # Both markets open?
 pair.both_have_valid_odds()     # Both have valid odds?
+```
+
+### LLMPairResult (Step 3 intermediate)
+```python
+from backend.services.llm_client import LLMPairResult
+
+result = LLMPairResult(
+    trigger_market_id="31",    # Index in the market list
+    implied_market_id="13",    # Index in the market list
+    reasoning="Temporal Inclusion: ..."
+)
 ```
 
 ## File Structure
@@ -132,6 +161,9 @@ data/
 │   ├── Iran.parquet               # Iran-related markets
 │   ├── Trump.parquet              # Trump-related markets
 │   └── {keyword}.parquet          # Other keywords
+├── mock/                          # Mock LLM responses (Step 3 input)
+│   ├── Iran_llm_response.json    # Pre-computed Iran pairs
+│   └── Trump_llm_response.json   # Pre-computed Trump pairs
 ├── pairs/                         # Step 3 output (individual)
 │   ├── Iran_pairs.parquet         # Pairs for Iran
 │   ├── Trump_pairs.parquet        # Pairs for Trump
@@ -149,7 +181,7 @@ python scripts/fetch_markets.py
 # Step 2: Extract markets for each keyword
 python scripts/extract_keyword_markets.py
 
-# Step 3: Create pairs from keyword markets
+# Step 3: LLM identifies implication pairs (mock mode)
 python scripts/find_market_pairs.py
 ```
 
@@ -165,60 +197,16 @@ python scripts/extract_keyword_markets.py
 python scripts/find_market_pairs.py
 ```
 
-### Adding Custom Logic
-
-**Example: Custom keyword filtering in Step 2**
-
-Edit `backend/services/keyword_markets.py`:
-```python
-def extract_keyword_markets(all_markets, keyword, filter_open_only=True):
-    # Standard filtering
-    pattern = rf'\b{keyword}\b'
-    regex = re.compile(pattern, re.IGNORECASE)
-    keyword_markets = [m for m in all_markets if regex.search(m.title)]
-
-    # ADD CUSTOM LOGIC HERE
-    if keyword == "Iran":
-        # Only include markets ending within 6 months for Iran
-        cutoff = datetime.now() + timedelta(days=180)
-        keyword_markets = [
-            m for m in keyword_markets
-            if m.end_date and m.end_date <= cutoff
-        ]
-
-    # Optionally filter for open markets
-    if filter_open_only:
-        keyword_markets = [m for m in keyword_markets if m.is_open()]
-
-    return KeywordMarkets(keyword=keyword, markets=keyword_markets)
-```
-
-**Example: Custom pairing logic in Step 3**
-
-Edit `backend/services/market_pairs.py`:
-```python
-def create_pairs_from_keyword_markets(keyword_markets, output_dir=None):
-    keyword = keyword_markets.keyword
-    markets = keyword_markets.markets
-
-    # ADD CUSTOM LOGIC HERE
-    if keyword == "Trump":
-        # For Trump, only pair markets with similar end dates
-        pairs = []
-        for m1, m2 in combinations(markets, 2):
-            if abs((m1.end_date - m2.end_date).days) <= 30:
-                pair = MarketPair(
-                    pair_id=f"{keyword}_{len(pairs):04d}",
-                    keyword=keyword,
-                    market1=m1,
-                    market2=m2
-                )
-                pairs.append(pair)
-    else:
-        # Standard pairing for other keywords
-        pairs = create_market_pairs(markets, keyword)
-
-    return pairs
+### Adding Mock LLM Responses
+To add mock responses for a new keyword, create `data/mock/{keyword}_llm_response.json`:
+```json
+[
+  {
+    "trigger_market_id": "0",
+    "implied_market_id": "1",
+    "reasoning": "Temporal Inclusion: ..."
+  }
+]
 ```
 
 ## Database Migration Path
@@ -242,16 +230,6 @@ CREATE TABLE markets (
 );
 ```
 
-Replace:
-```python
-# Old: Parquet
-save_markets_to_parquet(markets, "data/markets.parquet")
-
-# New: Database
-session.bulk_save_objects(markets)
-session.commit()
-```
-
 ### Step 2: Keyword Markets Table
 ```sql
 CREATE TABLE keyword_markets (
@@ -263,64 +241,21 @@ CREATE TABLE keyword_markets (
 CREATE INDEX idx_keyword ON keyword_markets(keyword);
 ```
 
-Replace:
-```python
-# Old: Parquet per keyword
-save_keyword_markets_to_parquet(km, f"data/keywords/{keyword}.parquet")
-
-# New: Database
-for market in keyword_markets.markets:
-    session.add(KeywordMarket(keyword=keyword, market_id=market.market_id))
-session.commit()
-```
-
 ### Step 3: Market Pairs Table
 ```sql
 CREATE TABLE market_pairs (
     pair_id VARCHAR PRIMARY KEY,
     keyword VARCHAR,
+    reasoning TEXT,
     market1_id VARCHAR REFERENCES markets(market_id),
     market2_id VARCHAR REFERENCES markets(market_id)
 );
 ```
 
-Replace:
-```python
-# Old: Parquet
-save_market_pairs_to_parquet(pairs, "data/market_pairs.parquet")
-
-# New: Database
-session.bulk_save_objects(pairs)
-session.commit()
-```
-
-## Benefits
-
-### Type Safety
-- Pydantic validates all data automatically
-- Catches errors early
-- Better IDE support
-
-### Testability
-- Each step can be unit tested independently
-- Mock objects easily
-- Test complex logic in isolation
-
-### Maintainability
-- Clear separation of concerns
-- Easy to understand data flow
-- Each step has a single responsibility
-
-### Scalability
-- Steps can run in parallel for different keywords
-- Easy to add caching layers
-- Can distribute processing
-
 ## Next Steps
 
-1. **Add more keywords**: Edit `extract_keyword_markets.py`
-2. **Custom filtering**: Modify `keyword_markets.py`
-3. **Advanced pairing**: Enhance `market_pairs.py`
+1. **Real LLM integration**: Configure API credentials in `llm_client.py`
+2. **Triplet support**: Extend to identify three-market logic chains
+3. **Add more keywords**: Edit `extract_keyword_markets.py`
 4. **Database integration**: Replace parquet functions with DB operations
-5. **Add caching**: Cache intermediate results
-6. **Parallel processing**: Process keywords in parallel
+5. **Parallel processing**: Process keywords in parallel

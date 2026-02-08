@@ -1,0 +1,52 @@
+[
+  {
+    "trigger_market_id": "1",
+    "implied_market_id": "2",
+    "reasoning": "Market 1 resolves to YES if deportations are between 750k and 1M. Market 2 resolves to YES if deportations are 750k or more. Since 750k-1M is a subset of '750k or more', 1 implies 2."
+  },
+  {
+    "trigger_market_id": "6",
+    "implied_market_id": "2",
+    "reasoning": "Market 6 (1M-1.25M) is a numerical subset of Market 2 (750k or more)."
+  },
+  {
+    "trigger_market_id": "4",
+    "implied_market_id": "2",
+    "reasoning": "Market 4 (1.25M-1.5M) is a numerical subset of Market 2 (750k or more)."
+  },
+  {
+    "trigger_market_id": "5",
+    "implied_market_id": "2",
+    "reasoning": "Market 5 (1.5M-1.75M) is a numerical subset of Market 2 (750k or more)."
+  },
+  {
+    "trigger_market_id": "9",
+    "implied_market_id": "2",
+    "reasoning": "Market 9 (1.75M-2M) is a numerical subset of Market 2 (750k or more)."
+  },
+  {
+    "trigger_market_id": "3",
+    "implied_market_id": "2",
+    "reasoning": "Market 3 (2M or more) is a numerical subset of Market 2 (750k or more)."
+  },
+  {
+    "trigger_market_id": "89",
+    "implied_market_id": "76",
+    "reasoning": "Market 89 resolves if approval hits 25% or below. Market 76 resolves if it hits 30% or below. Hitting 25% strictly implies that it has reached or passed 30%."
+  },
+  {
+    "trigger_market_id": "89",
+    "implied_market_id": "97",
+    "reasoning": "Hitting 25% or below (Market 89) strictly implies that the approval rating has reached or passed 40% or below (Market 97)."
+  },
+  {
+    "trigger_market_id": "76",
+    "implied_market_id": "97",
+    "reasoning": "Hitting 30% or below (Market 76) strictly implies that the approval rating has reached or passed 40% or below (Market 97)."
+  },
+  {
+    "trigger_market_id": "87",
+    "implied_market_id": "18",
+    "reasoning": "Market 87 requires impeachment by June 30, 2026. Market 18 requires impeachment by December 31, 2026. Because June 30 occurs before December 31, any event satisfying the earlier deadline logically satisfies the later one."
+  }
+]

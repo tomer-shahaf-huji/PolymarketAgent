@@ -160,13 +160,19 @@ class Market(BaseModel):
 
 
 class MarketPair(BaseModel):
-    """Represents a pair of related Polymarket markets."""
+    """
+    Represents a pair of related Polymarket markets.
+
+    Convention: market1 is the trigger market, market2 is the implied market.
+    If market1 resolves YES, then market2 must also resolve YES (A -> B).
+    """
 
     pair_id: str = Field(..., description="Unique identifier for this pair")
     keyword: Optional[str] = Field(None, description="Keyword that relates these markets")
 
-    market1: Market = Field(..., description="First market in the pair")
-    market2: Market = Field(..., description="Second market in the pair")
+    market1: Market = Field(..., description="Trigger market (A) - if this resolves YES...")
+    market2: Market = Field(..., description="Implied market (B) - ...then this must also resolve YES")
+    reasoning: Optional[str] = Field(None, description="Why market1 implies market2 (LLM explanation)")
 
     class Config:
         json_schema_extra = {
@@ -203,6 +209,7 @@ class MarketPair(BaseModel):
         return {
             'pair_id': self.pair_id,
             'keyword': self.keyword,
+            'reasoning': self.reasoning,
             'market1_id': self.market1.market_id,
             'market1_title': self.market1.title,
             'market1_url': self.market1.url,
