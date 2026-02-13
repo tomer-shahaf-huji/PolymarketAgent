@@ -1,5 +1,6 @@
 """
-Convenience script to start both the FastAPI backend and React frontend servers.
+Convenience script to start the FastAPI backend, React frontend,
+and real-time price streamer all from a single terminal.
 """
 import subprocess
 import sys
@@ -28,15 +29,20 @@ def main():
         if response.lower() != 'y':
             print("Exiting...")
             return
+    else:
+        mtime = data_file.stat().st_mtime
+        age_minutes = (time.time() - mtime) / 60
+        print(f"[i] market_pairs.parquet last updated {age_minutes:.0f} minutes ago")
+        print()
 
     # Start FastAPI backend
     print("1. Starting FastAPI backend server...")
-    print("   URL: http://localhost:8000")
-    print("   Docs: http://localhost:8000/docs")
+    print("   URL: http://localhost:8001")
+    print("   Docs: http://localhost:8001/docs")
     print()
 
     backend = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "backend.api.server:app", "--reload", "--port", "8000"],
+        [sys.executable, "-m", "uvicorn", "backend.api.server:app", "--reload", "--port", "8001"],
         cwd=str(project_root),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE
@@ -64,9 +70,23 @@ def main():
     print("   Waiting for frontend to start...")
     time.sleep(4)
 
+    # Start price streamer
+    streamer = None
+    if data_file.exists():
+        print()
+        print("3. Starting real-time price streamer (WebSocket)...")
+        streamer = subprocess.Popen(
+            [sys.executable, str(project_root / "scripts" / "run_price_streamer.py")],
+            cwd=str(project_root),
+        )
+        print("   [OK] Price streamer started")
+    else:
+        print()
+        print("3. [SKIP] Price streamer not started (no pairs data yet)")
+
     # Open browser
     print()
-    print("3. Opening browser...")
+    print("4. Opening browser...")
     try:
         webbrowser.open("http://localhost:5173")
         print("   [OK] Browser opened")
@@ -80,11 +100,12 @@ def main():
     print("=" * 60)
     print()
     print("Services:")
-    print("  • Frontend UI:  http://localhost:5173")
-    print("  • Backend API:  http://localhost:8000")
-    print("  • API Docs:     http://localhost:8000/docs")
+    print("  • Frontend UI:      http://localhost:5173")
+    print("  • Backend API:      http://localhost:8001")
+    print("  • API Docs:         http://localhost:8001/docs")
+    print("  • Price Streamer:   " + ("running" if streamer else "not started"))
     print()
-    print("Press Ctrl+C to stop both servers")
+    print("Press Ctrl+C to stop all services")
     print()
 
     try:
@@ -94,20 +115,26 @@ def main():
     except KeyboardInterrupt:
         print()
         print("=" * 60)
-        print("Stopping servers...")
+        print("Stopping services...")
         print("=" * 60)
         backend.terminate()
         frontend.terminate()
+        if streamer:
+            streamer.terminate()
 
         # Wait for graceful shutdown
         try:
             backend.wait(timeout=5)
             frontend.wait(timeout=5)
+            if streamer:
+                streamer.wait(timeout=5)
         except subprocess.TimeoutExpired:
             backend.kill()
             frontend.kill()
+            if streamer:
+                streamer.kill()
 
-        print("[OK] Servers stopped")
+        print("[OK] All services stopped")
         print()
 
 

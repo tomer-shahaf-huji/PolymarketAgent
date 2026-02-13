@@ -92,6 +92,8 @@ def load_keyword_markets_from_parquet(filepath: str) -> KeywordMarkets:
             url=row['url'],
             yes_odds=row.get('yes_odds'),
             no_odds=row.get('no_odds'),
+            yes_token_id=row.get('yes_token_id'),
+            no_token_id=row.get('no_token_id'),
             end_date=row.get('end_date'),
             active=row.get('active', False),
             closed=row.get('closed', False),

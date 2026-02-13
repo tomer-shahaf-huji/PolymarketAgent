@@ -11,7 +11,7 @@ import os
 from typing import List
 from pathlib import Path
 
-from backend.models.market import Market, MarketPair, save_market_pairs_to_parquet
+from backend.models.market import Market, MarketPair, save_market_pairs_to_parquet, load_market_pairs_from_parquet
 from backend.models.keyword_market import KeywordMarkets, load_keyword_markets_from_parquet
 from backend.services.llm_client import (
     LLMPairResult,
@@ -107,6 +107,89 @@ def save_pairs(pairs: List[MarketPair], filepath: str) -> None:
 
     file_size = os.path.getsize(filepath) / 1024
     print(f"  Saved {len(pairs)} pairs to {filepath} ({file_size:.2f} KB)")
+
+
+def refresh_pair_prices(
+    pairs_file: str,
+    keywords_dir: str,
+    keywords: list[str],
+) -> List[MarketPair]:
+    """
+    Refresh prices in existing market pairs without re-running LLM analysis.
+
+    Loads existing pairs from parquet, loads fresh market data from keyword
+    files, and updates yes_odds/no_odds for each market in each pair.
+
+    Args:
+        pairs_file: Path to existing market_pairs.parquet
+        keywords_dir: Directory containing keyword market files with fresh prices
+        keywords: List of keywords to load fresh prices from
+
+    Returns:
+        List of MarketPair objects with updated prices
+    """
+    print("=" * 60)
+    print("Price Refresh Mode (skipping LLM analysis)")
+    print(f"Loading existing pairs from: {pairs_file}")
+    print("=" * 60)
+    print()
+
+    # 1. Load existing pairs
+    existing_pairs = load_market_pairs_from_parquet(pairs_file)
+    print(f"  Loaded {len(existing_pairs)} existing pairs")
+
+    # 2. Build market_id -> fresh Market lookup from all keyword files
+    fresh_markets: dict[str, Market] = {}
+    for keyword in keywords:
+        keyword_file = os.path.join(keywords_dir, f"{keyword}.parquet")
+        if not os.path.exists(keyword_file):
+            print(f"  [WARN] Keyword file not found: {keyword_file}, skipping")
+            continue
+
+        keyword_markets = load_keyword_markets_from_parquet(keyword_file)
+        for market in keyword_markets.markets:
+            fresh_markets[market.market_id] = market
+
+    print(f"  Loaded {len(fresh_markets)} fresh markets from keyword files")
+
+    # 3. Update prices in each pair
+    updated_count = 0
+    missing_count = 0
+
+    for pair in existing_pairs:
+        fresh_m1 = fresh_markets.get(pair.market1.market_id)
+        if fresh_m1:
+            pair.market1.yes_odds = fresh_m1.yes_odds
+            pair.market1.no_odds = fresh_m1.no_odds
+            if fresh_m1.yes_token_id:
+                pair.market1.yes_token_id = fresh_m1.yes_token_id
+            if fresh_m1.no_token_id:
+                pair.market1.no_token_id = fresh_m1.no_token_id
+        else:
+            missing_count += 1
+
+        fresh_m2 = fresh_markets.get(pair.market2.market_id)
+        if fresh_m2:
+            pair.market2.yes_odds = fresh_m2.yes_odds
+            pair.market2.no_odds = fresh_m2.no_odds
+            if fresh_m2.yes_token_id:
+                pair.market2.yes_token_id = fresh_m2.yes_token_id
+            if fresh_m2.no_token_id:
+                pair.market2.no_token_id = fresh_m2.no_token_id
+        else:
+            missing_count += 1
+
+        if fresh_m1 or fresh_m2:
+            updated_count += 1
+
+    print(f"  Updated prices for {updated_count} pairs")
+    if missing_count > 0:
+        print(f"  [WARN] {missing_count} market lookups failed (market may have been delisted)")
+
+    # 4. Save back
+    save_pairs(existing_pairs, pairs_file)
+
+    return existing_pairs
 
 
 def find_and_pair_markets_multi_keyword(

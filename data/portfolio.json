@@ -1,0 +1,51 @@
+{
+  "cash": 7800.0,
+  "starting_balance": 10000.0,
+  "positions": [
+    {
+      "position_id": "Iran_0028_m1_NO_1",
+      "pair_id": "Iran_0028",
+      "market_id": "0x4b02efe53e631ada84681303fd66d79ad615f3d2b6a28b4633d43d935f89af58",
+      "market_title": "US strikes Iran by March 31, 2026?",
+      "outcome": "NO",
+      "shares": 162.601626,
+      "avg_price": 0.615,
+      "cost_basis": 100.0,
+      "created_at": "2026-02-12T22:34:47.873498"
+    },
+    {
+      "position_id": "Iran_0028_m2_YES_1",
+      "pair_id": "Iran_0028",
+      "market_id": "0x3b41890d5e8c9640649a9e6f724d1f74aa67af855506db6f871c5fdac70cfd90",
+      "market_title": "U.S. x Iran Military Engagement by March 31, 2026?",
+      "outcome": "YES",
+      "shares": 263.157895,
+      "avg_price": 0.38,
+      "cost_basis": 100.0,
+      "created_at": "2026-02-12T22:34:47.873498"
+    },
+    {
+      "position_id": "Trump_0007_m1_NO_2",
+      "pair_id": "Trump_0007",
+      "market_id": "0xd34dad6f20237e9eda3b001e2adcac86661638a22c7d9898b108606366d93dc7",
+      "market_title": "Will Trump's approval rating hit 25% in 2026?",
+      "outcome": "NO",
+      "shares": 1081.081081,
+      "avg_price": 0.925,
+      "cost_basis": 1000.0,
+      "created_at": "2026-02-12T22:35:59.353711"
+    },
+    {
+      "position_id": "Trump_0007_m2_YES_2",
+      "pair_id": "Trump_0007",
+      "market_id": "0x0065f53147e934a9abe047976407bb96bde0a70139af5ae93cfe1a2fdf958afa",
+      "market_title": "Will Trump's approval rating hit 30% in 2026?",
+      "outcome": "YES",
+      "shares": 14285.714286,
+      "avg_price": 0.07,
+      "cost_basis": 1000.0,
+      "created_at": "2026-02-12T22:35:59.353711"
+    }
+  ],
+  "trade_count": 2
+}

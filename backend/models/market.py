@@ -18,6 +18,9 @@ class Market(BaseModel):
     yes_odds: Optional[float] = Field(None, ge=0.0, le=1.0, description="Probability for 'Yes' outcome")
     no_odds: Optional[float] = Field(None, ge=0.0, le=1.0, description="Probability for 'No' outcome")
 
+    yes_token_id: Optional[str] = Field(None, description="Token ID (asset_id) for YES outcome")
+    no_token_id: Optional[str] = Field(None, description="Token ID (asset_id) for NO outcome")
+
     end_date: Optional[datetime] = Field(None, description="Market end date")
     active: bool = Field(default=False, description="Whether the market is active")
     closed: bool = Field(default=False, description="Whether the market is closed")
@@ -84,6 +87,8 @@ class Market(BaseModel):
             'url': self.url,
             'yes_odds': self.yes_odds,
             'no_odds': self.no_odds,
+            'yes_token_id': self.yes_token_id,
+            'no_token_id': self.no_token_id,
             'end_date': self.end_date,
             'active': self.active,
             'closed': self.closed,
@@ -111,21 +116,26 @@ class Market(BaseModel):
         # Construct URL from slug
         url = f"https://polymarket.com/event/{slug}" if slug else ""
 
-        # Extract yes/no odds from tokens array
+        # Extract yes/no odds and token IDs from tokens array
         tokens = raw_market.get('tokens', [])
         yes_odds = None
         no_odds = None
+        yes_token_id = None
+        no_token_id = None
 
         for token in tokens:
             outcome = token.get('outcome', '').lower()
             price = token.get('price')
+            token_id = token.get('token_id')
 
-            if price is not None:
-                price = float(price)
-                if outcome == 'yes':
-                    yes_odds = price
-                elif outcome == 'no':
-                    no_odds = price
+            if outcome == 'yes':
+                yes_token_id = token_id
+                if price is not None:
+                    yes_odds = float(price)
+            elif outcome == 'no':
+                no_token_id = token_id
+                if price is not None:
+                    no_odds = float(price)
 
         # Extract additional fields
         end_date_str = raw_market.get('end_date_iso')
@@ -151,6 +161,8 @@ class Market(BaseModel):
             url=url,
             yes_odds=yes_odds,
             no_odds=no_odds,
+            yes_token_id=yes_token_id,
+            no_token_id=no_token_id,
             end_date=end_date,
             active=active,
             closed=closed,
@@ -215,11 +227,15 @@ class MarketPair(BaseModel):
             'market1_url': self.market1.url,
             'market1_yes_odds': self.market1.yes_odds,
             'market1_no_odds': self.market1.no_odds,
+            'market1_yes_token_id': self.market1.yes_token_id,
+            'market1_no_token_id': self.market1.no_token_id,
             'market2_id': self.market2.market_id,
             'market2_title': self.market2.title,
             'market2_url': self.market2.url,
             'market2_yes_odds': self.market2.yes_odds,
             'market2_no_odds': self.market2.no_odds,
+            'market2_yes_token_id': self.market2.yes_token_id,
+            'market2_no_token_id': self.market2.no_token_id,
         }
 
 
@@ -285,6 +301,52 @@ def save_market_pairs_to_parquet(pairs: List[MarketPair], filepath: str) -> None
     print(f"Saved {len(pairs)} market pairs to {filepath}")
 
 
+def load_market_pairs_from_parquet(filepath: str) -> List[MarketPair]:
+    """
+    Load MarketPair objects from parquet file.
+
+    Args:
+        filepath: Path to parquet file
+
+    Returns:
+        List of MarketPair objects
+    """
+    df = pd.read_parquet(filepath)
+    pairs = []
+
+    for _, row in df.iterrows():
+        market1 = Market(
+            market_id=row['market1_id'],
+            title=row['market1_title'],
+            description="",
+            url=row['market1_url'],
+            yes_odds=row.get('market1_yes_odds'),
+            no_odds=row.get('market1_no_odds'),
+            yes_token_id=row.get('market1_yes_token_id'),
+            no_token_id=row.get('market1_no_token_id'),
+        )
+        market2 = Market(
+            market_id=row['market2_id'],
+            title=row['market2_title'],
+            description="",
+            url=row['market2_url'],
+            yes_odds=row.get('market2_yes_odds'),
+            no_odds=row.get('market2_no_odds'),
+            yes_token_id=row.get('market2_yes_token_id'),
+            no_token_id=row.get('market2_no_token_id'),
+        )
+        pair = MarketPair(
+            pair_id=row['pair_id'],
+            keyword=row.get('keyword'),
+            market1=market1,
+            market2=market2,
+            reasoning=row.get('reasoning') if pd.notna(row.get('reasoning')) else None,
+        )
+        pairs.append(pair)
+
+    return pairs
+
+
 def load_markets_from_parquet(filepath: str) -> List[Market]:
     """
     Load Market objects from parquet file (placeholder for DB).
@@ -306,6 +368,8 @@ def load_markets_from_parquet(filepath: str) -> List[Market]:
             url=row['url'],
             yes_odds=row.get('yes_odds'),
             no_odds=row.get('no_odds'),
+            yes_token_id=row.get('yes_token_id'),
+            no_token_id=row.get('no_token_id'),
             end_date=row.get('end_date'),
             active=row.get('active', False),
             closed=row.get('closed', False),

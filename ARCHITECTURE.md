@@ -1,8 +1,8 @@
-# Architecture: Three-Step Data Pipeline
+# Architecture: Data Pipeline
 
 ## Overview
 
-The application uses a **three-step data pipeline** to process Polymarket data. Each step works with **Pydantic objects** for type safety and validation. Parquet files serve as **placeholders for a future database**.
+The application uses a **data pipeline** to process Polymarket data, identify logical implication pairs via LLM, and scan for arbitrage opportunities. Each step works with **Pydantic objects** for type safety. Parquet files serve as **placeholders for a future database**.
 
 ## Pipeline Steps
 
@@ -30,6 +30,7 @@ The application uses a **three-step data pipeline** to process Polymarket data. 
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
 │            STEP 3: LLM-Driven Implication Pairing               │
+│                     (runs infrequently)                          │
 │                                                                  │
 │  Keyword markets → LLM analysis → MarketPair objects →          │
 │                    data/pairs/{keyword}_pairs.parquet            │
@@ -41,7 +42,33 @@ The application uses a **three-step data pipeline** to process Polymarket data. 
 │  Model: backend/models/market.py (MarketPair)                   │
 │  Mock data: data/mock/{keyword}_llm_response.json               │
 └─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│              ARBITRAGE SCANNER (runs on every fetch)            │
+│                                                                  │
+│  MarketPair odds → math check → ArbitrageOpportunity            │
+│                                                                  │
+│  Service: backend/services/arbitrage_scanner.py                 │
+│  Computed at: API serve time (not stored in parquet)             │
+│  UI: Highlighted pairs + trade instructions                     │
+│                                                                  │
+│  Decoupled from LLM — uses current odds only.                   │
+│  Future: re-runs on every market data refresh.                  │
+└─────────────────────────────────────────────────────────────────┘
 ```
+
+## Arbitrage Scanner
+
+The scanner detects risk-free profit opportunities from implication pairs. It requires **no LLM** — pure math on current market prices.
+
+**Logic:** Given a pair where market1 (child) → market2 (parent):
+- If `Price(child YES) > Price(parent YES)`, there's guaranteed profit
+- **Trade:** Buy YES on parent + Buy NO on child
+- **Cost:** `parent_yes + child_no`
+- **Payout:** $1.00 guaranteed
+- **Profit:** `$1.00 - cost`
+
+The scanner runs at API serve time, so it always reflects the latest odds. When live market updates are implemented, arbitrage opportunities will be detected in real-time without re-running the LLM.
 
 ## Step 3: How LLM Pairing Works
 

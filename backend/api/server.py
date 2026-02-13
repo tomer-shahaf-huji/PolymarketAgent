@@ -8,6 +8,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import pandas as pd
+from pydantic import BaseModel as PydanticBaseModel
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -25,18 +26,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Cache for pairs data
+# Cache for pairs data (refreshes when file changes)
 _pairs_cache = None
+_pairs_cache_mtime = None
 
 
 def load_pairs_data() -> pd.DataFrame:
-    """Load market pairs from parquet file."""
-    global _pairs_cache
+    """Load market pairs from parquet file, refreshing if file changed."""
+    global _pairs_cache, _pairs_cache_mtime
 
-    if _pairs_cache is not None:
-        return _pairs_cache
-
-    # Get path relative to project root
     project_root = Path(__file__).parent.parent.parent
     pairs_file = project_root / "data" / "market_pairs.parquet"
 
@@ -46,16 +44,25 @@ def load_pairs_data() -> pd.DataFrame:
             f"Please run 'python scripts/find_market_pairs.py' first."
         )
 
+    current_mtime = pairs_file.stat().st_mtime
+
+    if _pairs_cache is not None and _pairs_cache_mtime == current_mtime:
+        return _pairs_cache
+
     _pairs_cache = pd.read_parquet(str(pairs_file))
+    _pairs_cache_mtime = current_mtime
     return _pairs_cache
 
 
 def format_pair(row: pd.Series) -> Dict[str, Any]:
-    """Format a pair DataFrame row as JSON."""
+    """Format a pair DataFrame row as JSON, including live arbitrage scan."""
+    from backend.services.arbitrage_scanner import scan_pair_from_row
+
     result = {
         "pair_id": row["pair_id"],
         "keyword": row.get("keyword", None),
         "reasoning": row.get("reasoning", None) if pd.notna(row.get("reasoning", None)) else None,
+        "arbitrage": scan_pair_from_row(row),
         "market1": {
             "id": row["market1_id"],
             "title": row["market1_title"],
@@ -91,14 +98,20 @@ async def root():
 
 
 @app.get("/api/pairs")
-async def get_pairs(limit: int = 100, offset: int = 0, keyword: str = None) -> Dict[str, Any]:
+async def get_pairs(
+    limit: int = 100,
+    offset: int = 0,
+    keyword: str = None,
+    arbitrage_only: bool = False,
+) -> Dict[str, Any]:
     """
-    Get all market pairs with pagination and optional keyword filtering.
+    Get all market pairs with pagination, keyword filtering, and arbitrage filtering.
 
     Args:
         limit: Maximum number of pairs to return (default: 100)
         offset: Number of pairs to skip (default: 0)
         keyword: Optional keyword to filter pairs by (e.g., "Iran", "Trump")
+        arbitrage_only: If true, only return pairs with arbitrage opportunities
 
     Returns:
         JSON with pairs array and pagination info
@@ -110,22 +123,29 @@ async def get_pairs(limit: int = 100, offset: int = 0, keyword: str = None) -> D
         if keyword and 'keyword' in df.columns:
             df = df[df['keyword'] == keyword]
 
-        # Apply pagination
-        total = len(df)
-        paginated_df = df.iloc[offset:offset + limit]
+        # Format all pairs (includes arbitrage scan)
+        all_pairs = [format_pair(row) for _, row in df.iterrows()]
 
-        # Convert to JSON format
-        pairs = [format_pair(row) for _, row in paginated_df.iterrows()]
+        # Filter for arbitrage only if requested
+        if arbitrage_only:
+            all_pairs = [p for p in all_pairs if p["arbitrage"]["has_arbitrage"]]
+
+        # Count arbitrage opportunities across all pairs
+        arb_count = sum(1 for p in all_pairs if p["arbitrage"]["has_arbitrage"])
+
+        # Apply pagination
+        total = len(all_pairs)
+        paginated_pairs = all_pairs[offset:offset + limit]
 
         response = {
-            "pairs": pairs,
+            "pairs": paginated_pairs,
             "total": total,
+            "arbitrage_count": arb_count,
             "limit": limit,
             "offset": offset,
             "has_more": (offset + limit) < total
         }
 
-        # Add keyword filter info if used
         if keyword:
             response["filter"] = {"keyword": keyword}
 
@@ -230,6 +250,61 @@ async def health():
             "status": "unhealthy",
             "error": str(e)
         }
+
+
+class TradeRequest(PydanticBaseModel):
+    """Request body for executing a simulated trade."""
+    pair_id: str
+    amount: float
+
+
+@app.get("/api/portfolio")
+async def get_portfolio() -> Dict[str, Any]:
+    """Get current portfolio with live position valuations."""
+    try:
+        from backend.services.portfolio_service import get_portfolio_with_values
+        return get_portfolio_with_values()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error loading portfolio: {str(e)}")
+
+
+@app.post("/api/trade")
+async def execute_trade(request: TradeRequest) -> Dict[str, Any]:
+    """
+    Execute a simulated arbitrage trade on a pair.
+
+    Body:
+        pair_id: The pair to trade
+        amount: Dollar amount per side (total cost = 2 * amount)
+    """
+    try:
+        from backend.services.portfolio_service import execute_pair_trade
+
+        if request.amount <= 0:
+            raise HTTPException(status_code=400, detail="Amount must be positive.")
+        if request.amount > 5000:
+            raise HTTPException(status_code=400, detail="Maximum $5,000 per side per trade.")
+
+        result = execute_pair_trade(request.pair_id, request.amount)
+        return result
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Trade execution error: {str(e)}")
+
+
+@app.post("/api/portfolio/reset")
+async def reset_portfolio_endpoint() -> Dict[str, Any]:
+    """Reset portfolio to initial $10,000 state."""
+    try:
+        from backend.services.portfolio_service import reset_portfolio, get_portfolio_with_values
+
+        reset_portfolio()
+        return get_portfolio_with_values()
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error resetting portfolio: {str(e)}")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,17 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python scripts/run_ui.py:*)"
+      "Bash(python scripts/run_ui.py:*)",
+      "Bash(python -c:*)",
+      "Bash(python -m uvicorn:*)",
+      "Bash(npm run dev:*)",
+      "Bash(ping:*)",
+      "Bash(curl:*)",
+      "Bash(python -m json.tool:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(timeout:*)"
     ]
   }
 }

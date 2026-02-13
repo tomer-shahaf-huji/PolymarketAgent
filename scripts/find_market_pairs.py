@@ -9,19 +9,31 @@ This is step 3 in the data pipeline:
 The LLM analyzes keyword markets and identifies pairs where Market A resolving YES
 logically guarantees Market B also resolves YES (temporal, numerical, or categorical
 inclusion). Currently uses mock LLM responses; will use real API later.
+
+If pairs already exist, this script only refreshes prices (skips LLM).
+Use --force to re-run the full LLM pipeline.
 """
 import sys
+import argparse
 from pathlib import Path
 
 # Add parent directory to path to import from backend
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from backend.services.market_pairs import find_and_pair_markets_multi_keyword
+from backend.services.market_pairs import find_and_pair_markets_multi_keyword, refresh_pair_prices
 from backend.models.market import market_pairs_to_dataframe
 
 
 def main():
-    """Create implication pairs from keyword markets via LLM analysis."""
+    """Create implication pairs from keyword markets via LLM analysis, or refresh prices."""
+    parser = argparse.ArgumentParser(description="Find market pairs or refresh prices")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force re-running full LLM pipeline even if pairs exist"
+    )
+    args = parser.parse_args()
+
     # Define keywords to process
     keywords = ["Iran", "Trump"]
 
@@ -30,14 +42,30 @@ def main():
     keywords_dir = str(data_dir / "keywords")
     output_file = str(data_dir / "market_pairs.parquet")
 
-    # Run the LLM-driven pairing service
-    pairs = find_and_pair_markets_multi_keyword(
-        keywords=keywords,
-        keywords_dir=keywords_dir,
-        output_file=output_file,
-        save_individual_pairs=True,
-        use_mock=True,  # Use mock LLM responses (set False for real API)
-    )
+    pairs_exist = Path(output_file).exists()
+
+    if pairs_exist and not args.force:
+        # Refresh mode: update prices only, skip LLM
+        print("[MODE] Pairs already exist -- refreshing prices only")
+        print("       (use --force to re-run full LLM pipeline)")
+        print()
+        pairs = refresh_pair_prices(
+            pairs_file=output_file,
+            keywords_dir=keywords_dir,
+            keywords=keywords,
+        )
+    else:
+        # Full mode: run LLM-driven pairing
+        if args.force and pairs_exist:
+            print("[MODE] --force flag set -- re-running full LLM pipeline")
+            print()
+        pairs = find_and_pair_markets_multi_keyword(
+            keywords=keywords,
+            keywords_dir=keywords_dir,
+            output_file=output_file,
+            save_individual_pairs=True,
+            use_mock=True,
+        )
 
     print()
     print("=" * 60)
